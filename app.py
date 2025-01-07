@@ -6,9 +6,7 @@ import logging
 app = Flask(__name__)
 DATABASE = 'database.db'
 
-# Add logging configuration
 logging.basicConfig(level=logging.INFO)
-
 logger = logging.getLogger(__name__)
 
 def init_db():
@@ -21,7 +19,8 @@ def init_db():
                 CREATE TABLE tasks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT NOT NULL,
-                    description TEXT
+                    description TEXT,
+                    completed BOOLEAN NOT NULL DEFAULT 0
                 )
             ''')
             conn.commit()
@@ -31,8 +30,17 @@ def init_db():
         finally:
             conn.close()
     else:
-        logger.info("Database already exists. Skipping initialization.")
-
+        # Add completed column to existing database if it doesn't exist
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT completed FROM tasks LIMIT 1")
+        except sqlite3.OperationalError:
+            logger.info("Adding completed column to existing database...")
+            cursor.execute("ALTER TABLE tasks ADD COLUMN completed BOOLEAN NOT NULL DEFAULT 0")
+            conn.commit()
+        conn.close()
+        logger.info("Database already exists. Schema updated if needed.")
 
 def get_db_connection():
     conn = sqlite3.connect(DATABASE)
@@ -43,9 +51,9 @@ def get_db_connection():
 def index():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tasks")
+    cursor.execute("SELECT * FROM tasks ORDER BY completed, id DESC")
     tasks = cursor.fetchall()
-    tasks = [dict(task) for task in tasks]  # Convert rows to dictionaries
+    tasks = [dict(task) for task in tasks]
     conn.close()
     return render_template('index.html', tasks=tasks)
 
@@ -56,8 +64,8 @@ def add():
         description = request.form['description']
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO tasks (title, description) VALUES (?, ?)",
-                       (title, description))
+        cursor.execute("INSERT INTO tasks (title, description, completed) VALUES (?, ?, 0)",
+                      (title, description))
         conn.commit()
         conn.close()
         return redirect(url_for('index'))
@@ -73,12 +81,21 @@ def update(task_id):
         new_title = request.form['title']
         new_description = request.form['description']
         cursor.execute("UPDATE tasks SET title = ?, description = ? WHERE id = ?",
-                       (new_title, new_description, task_id))
+                      (new_title, new_description, task_id))
         conn.commit()
         conn.close()
         return redirect(url_for('index'))
     conn.close()
     return render_template('update.html', task=task)
+
+@app.route('/toggle/<int:task_id>')
+def toggle_completion(task_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE tasks SET completed = NOT completed WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('index'))
 
 @app.route('/delete/<int:task_id>', methods=['GET'])
 def delete(task_id):
