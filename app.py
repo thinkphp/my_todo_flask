@@ -8,21 +8,31 @@ DATABASE = 'database.db'
 
 # Add logging configuration
 logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 def init_db():
     if not os.path.exists(DATABASE):
+        logger.info(f"Database {DATABASE} not found. Initializing...")
         conn = sqlite3.connect(DATABASE)
         cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                description TEXT
-            )
-        ''')
-        conn.commit()
-        conn.close()
+        try:
+            cursor.execute('''
+                CREATE TABLE tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    description TEXT
+                )
+            ''')
+            conn.commit()
+            logger.info("Table 'tasks' created successfully.")
+        except sqlite3.Error as e:
+            logger.error(f"Error creating table: {e}")
+        finally:
+            conn.close()
+    else:
+        logger.info("Database already exists. Skipping initialization.")
+
 
 def get_db_connection():
     conn = sqlite3.connect(DATABASE)
